@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% load staticfiles %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ block.super }}About{% endblock %}
+
+{% block navbar-left %}
+  {% include "_navbar.html" with active_link="dashboard" %}
+{% endblock %}
+
+
+{% block navbar-right %}
+  {% if not user.is_authenticated %}
+  <a class="btn btn-default" href="{% url 'accounts:login' %}" role="button">Log in</a>
+  {% else %}
+    {{ block.super }}
+  {% endif %}
+{% endblock %}
+
+{% block container %}
+
+<div class="">
+  <div class="row">
+    <div class="col-md-4 text-center">
+      <div class="well" style="margin: 1em 0 1em 2em;">
+        {# % verbatim % #}
+        <div>
+          <p>Batch</p>
+          <select id="batch_selector">
+            <option value="20039" selected> 20039</option>
+            <option value="20049"> 20049</option>
+            <option value="20059"> 20059</option>
+            <option value="20069"> 20069</option>
+            <option value="20079"> 20079</option>
+            <option value="20089"> 20089</option>
+            <option value="20099"> 20099</option>
+            <option value="20109"> 20109</option>
+            <option value="20119"> 20119</option>
+            <option value="20129"> 20129</option>
+            <option value="20139"> 20139</option>
+            <option value="20149"> 20149</option>
+            <option value="20159"> 20159</option>
+            <option value="20169"> 20169</option>
+          </select>
+          <hr>
+        </div>
+        <div>
+          <p>Visualize By</p>
+          <form>
+            <label><input type="radio" name="visualize_by" value="department" checked> Department</label>
+            <label><input type="radio" name="visualize_by" value="major"> Entering Major</label>
+            <label><input type="radio" name="visualize_by" value="gender"> Gender</label>
+            <label><input type="radio" name="visualize_by" value="urm"> URM Status</label>
+          </form>
+          <hr>
+        </div>
+        <div>
+          <label>Year</label>
+          <input type="range" id="year_selector" min="1" max="7" value="1">
+          <hr>
+        </div>
+        <div>
+          <p>View</p>
+          <form>
+            <label><input type="radio" name="flow_type" value="Continuing,Graduated" checked> All</label>
+            <label><input type="radio" name="flow_type" value="Continuing"> Continuing Students</label>
+            <label><input type="radio" name="flow_type" value="Graduated"> Graduated Students</label>
+          </form>
+          <hr>
+        </div>
+        <div>
+          <label>Show flows with <input type="text" id="min_student_num" value="3" style="width: 25px;"> students and above</label>
+          <hr>
+        </div>
+        {# % endverbatim % #}
+      </div>
+    </div>
+    <div class="col-md-8 text-center">
+      <div id="sankey" style="width: 800px; height: 600px; margin: 1em auto; border: 1px solid silver;}"></div>
+    </div>
+  </div>
+</div>
+
+{% endblock container %}
+
+{% block scripts %}
+<script src="{% static 'site/js/site.js' %}"></script>
+<script src="{% static 'Highcharts-6.0.4/code/highcharts.js' %}"></script>
+<script src="{% static 'Highcharts-6.0.4/code/modules/sankey.js' %}"></script>
+<script src="{% static 'Highcharts-6.0.4/code/modules/exporting.js' %}"></script>
+<script src="{% static 'custom/util.js' %}"></script>
+
+<script>
+var MIN_STUDENT_NUM = 3; // minimum number of students per flow to avoid cluttering
+
+function get_flows(data, from_field, to_field){
+  var flows = data.map(row => ({
+    from: "[Y1]" + row[from_field],
+    to: (row.flow_type == "Graduated" ? "[G]" : "[Y" + (row.year-(-1)) + "]") + row[to_field],
+    weight: parseInt(row.number)
+  }));
+  return consolidate_flows(flows).filter(x=>{return x.weight >= MIN_STUDENT_NUM;});
+}
+
+function consolidate_flows(data){
+  var tracker = {};
+  var results = [];
+  for (var i=0; i<data.length; i++){
+    row = data[i];
+    key = row.from + ";" + row.to;
+    if (tracker.hasOwnProperty(key)){
+      results[tracker[key]].weight += row.weight;
+    } else {
+      results.push(row);
+      tracker[key] = results.length - 1;
+    }
+  }
+  return results;
+}
+
+function create_sankey(eid, input_data){
+  chart_1 = Highcharts.chart(eid, {
+      id: "chart_1",
+
+      title: {
+          text: 'CNS Student Flows'
+      },
+
+      series: [{
+          data: input_data,
+          type: 'sankey',
+          name: 'Sankey demo series' 
+      }]
+
+  });
+}
+
+// Globals
+var BATCH = "20039";
+var VISUALIZE_BY = 'department';
+var CATEGORY_IN_VAL = 'All';
+var FLOW_TYPE = 'Continuing,Graduated';
+
+function sankey_get(){
+  function callback(received_data){
+    create_sankey('sankey', get_flows(received_data.objects, VISUALIZE_BY, 'college_to'));
+  };
+  var params = {
+    format: "json",
+    limit: 1000,
+    flow_type__in: FLOW_TYPE,
+    batch: BATCH,
+    year: $('#year_selector')[0].value,
+    category__in: CATEGORY_IN_VAL
+  };
+  $.get(url="http://localhost:8000/api/sankey/", data=params, success=callback);
+}
+
+$('#batch_selector').on('change', function(){
+  BATCH = this.value;
+  sankey_get();
+})
+
+$('#year_selector').on('change', sankey_get);
+
+$('input[name="visualize_by"]').click(function(){
+  switch (this.value){
+    case "department":
+      VISUALIZE_BY = "department";
+      CATEGORY_IN_VAL = 'All';
+      break;
+    case "major":
+      VISUALIZE_BY = "major_from";
+      CATEGORY_IN_VAL = 'All';
+      break;
+    case "gender":
+      VISUALIZE_BY = "category";
+      CATEGORY_IN_VAL = 'Males,Females';
+      break;
+    case "urm":
+      VISUALIZE_BY = "category";
+      CATEGORY_IN_VAL = 'URM,nonURM';
+      break;
+    default:
+      throw "Coding Error!";
+  }
+  sankey_get();
+});
+
+$('input[name="flow_type"]').click(function(){
+  FLOW_TYPE = this.value;
+  sankey_get();
+})
+
+$('#min_student_num').on('change', function(){
+  MIN_STUDENT_NUM = this.value;
+  sankey_get();
+})
+
+// initialize the diagram
+sankey_get()
+
+</script>
+
+{% endblock scripts %}
+

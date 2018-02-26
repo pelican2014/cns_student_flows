@@ -2,17 +2,23 @@ from django.conf.urls import include, url
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
+from tastypie.api import Api
+from sankey.api.resources import SankeyResource
 import profiles.urls
 import accounts.urls
+import sankey.urls
 from . import views
+
+sankey_resource = SankeyResource()
 
 urlpatterns = [
     url(r'^$', views.HomePage.as_view(), name='home'),
-    url(r'^dashboard/$', views.Dashboard.as_view(), name='dashboard'),
     url(r'^about/$', views.AboutPage.as_view(), name='about'),
     url(r'^users/', include(profiles.urls, namespace='profiles')),
     url(r'^admin/', include(admin.site.urls)),
     url(r'^', include(accounts.urls, namespace='accounts')),
+    url(r'^', include(sankey.urls, namespace='sankey')),
+    url(r'^api/', include(sankey_resource.urls)),
 ]
 
 # User-uploaded files like profile pics need to be served in development
